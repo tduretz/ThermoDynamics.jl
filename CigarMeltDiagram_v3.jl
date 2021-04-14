@@ -32,8 +32,8 @@ function CigarMelt()
     Tref    = 298;                    # K
     Pref    = 1e-3;                   # kbar        
     R       = 8.3144;                 # J/K/mol
-    dC      = 0.05
-    dT      = 10
+    dC      = 4*0.01
+    dT      = 4*2
     dP      = 1e8
     C_sys   = 0:dC:1;
     T       = 1400:dT:2300
@@ -216,8 +216,8 @@ function CigarMelt()
                 G_sol             = sum(Gibbs_all[i_sol].*alph[i_sol] ) / X_sol / M_sol
                 G_mlt             = sum(Gibbs_all[i_mlt].*alph[i_mlt] ) / X_mlt / M_mlt
                 # Heat capacity 
-                Cp_sol[iT,iP,iC]  = sum(   Cp_all[i_sol].*alph[i_sol]') / X_sol / M_sol
-                Cp_mlt[iT,iP,iC]  = sum(   Cp_all[i_mlt].*alph[i_mlt]') / X_mlt / M_mlt
+                Cp_sol[iT,iP,iC]  = sum(   Cp_all[i_sol].*alph[i_sol] ) / X_sol / M_sol
+                Cp_mlt[iT,iP,iC]  = sum(   Cp_all[i_mlt].*alph[i_mlt] ) / X_mlt / M_mlt
                 # Internal energy
                 U_sol[iT,iP,iC]   = G_sol + T[iT]*S_sol - P[iP]*V_sol
                 U_mlt[iT,iP,iC]   = G_mlt + T[iT]*S_mlt - P[iP]*V_mlt
@@ -238,10 +238,15 @@ function CigarMelt()
         end
     end
     # Visualise
-    p1 = heatmap(C_sys, T, alph_sol[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{sol}}" )
-    p2 = heatmap(C_sys, T, alph_mlt[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{mlt}}" )
-    p3 = heatmap(C_sys, T,  xMg_sol[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{sol}}_{\mathrm{Mg}}" )
-    p4 = heatmap(C_sys, T,  xMg_mlt[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{mlt}}_{\mathrm{Mg}}" )
+    # p1 = heatmap(C_sys, T, alph_sol[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{sol}}" )
+    # p2 = heatmap(C_sys, T, alph_mlt[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{mlt}}" )
+    # p3 = heatmap(C_sys, T,  CFo_sol[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{sol}}_{\mathrm{Mg}}" )
+    # p4 = heatmap(C_sys, T,  CFo_mlt[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"X^{\mathrm{mlt}}_{\mathrm{Mg}}" )
+    # display(plot(p1,p2,p3,p4, layout = 4))
+    p1 = heatmap(C_sys, T, rho_sol[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"\rho^{\mathrm{sol}}" )
+    p2 = heatmap(C_sys, T, rho_mlt[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"\rho^{\mathrm{mlt}}" )
+    p3 = heatmap(C_sys, T,  Cp_sol[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"C^{\mathrm{sol}}_{\mathrm{p}}" )
+    p4 = heatmap(C_sys, T,  Cp_mlt[:,1,:], c=:inferno, xlabel=L"X_{\mathrm{Mg}}", ylabel=L"T_{ } [\mathrm{K}]", title=L"C^{\mathrm{mlt}}_{\mathrm{p}}" )
     display(plot(p1,p2,p3,p4, layout = 4))
 end
 #----------------------------------------------------------#
