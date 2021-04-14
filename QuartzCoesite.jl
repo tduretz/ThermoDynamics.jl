@@ -1,0 +1,146 @@
+using JuMP, GLPK
+using Plots
+using LaTeXStrings
+#----------------------------------------------------------#
+# This codes combines elements of the thermodynamics programming classes of Yury Podladchikov and from Annelore Bessat's Ph.D.
+#----------------------------------------------------------#
+@views function GibbsEnergy(T2,P2,a,b,c,d,Vref,Pref,Tref,a0,Kref,dSref,dHref,dGL,Tc0,Smax,Vmax)
+    P2       = P2./1e5/1e3   # From Pa to kbar
+    Cp       = a  .+ b.*T2 .+ c.*T2.^(-2) + d.*T2.^(-1/2);                                # J/K   - extensive
+    Tc       = Tc0 .+ Vmax./Smax.*(P2.-Pref);
+    if dGL == 1
+        Cp      = Cp .+ (Smax.*T2) ./(2*sqrt.(Tc) .* sqrt.( (Tc-T2).* (T2.<=Tc) )) ;      # dG Landau for SiO2 (second order phase transitions)
+    end
+    V1T      = Vref.*(1 .+     a0.*(T2.-Tref) .- 20.0 .*a0 .*(sqrt.(T2) .- sqrt.(Tref))); # J/bar - extensive
+    KT       = Kref.*(1 .- 1.5e-4.*(T2.-Tref));
+    V1       = V1T .* (1 .- 4.0 .*P2./(KT .+ 4.0 .*P2)).^(1/4);                           # Murnaghan EOS - Holland - Powell (1998)
+    int_Cp   = zeros(size(P2))
+    int_Cp_T = zeros(size(P2))
+    int_V    = zeros(size(P2))
+    @. int_Cp   = (2.0 *sqrt(T2).*d + T2.^2 *b/2 + T2.*a - c./T2) - (2.0 *sqrt(Tref).*d + Tref.^2 *b/2 + Tref.*a - c./Tref); 
+    @. int_Cp_T = -0.5*T2.^(-2.0).*c - 2.0*1 /sqrt(T2).*d + 1.0*T2.^1.0.*b + 1.0*a.*log(T2) - (-0.5*Tref.^(-2.0).*c - 2.0*1 /sqrt(Tref).*d + 1.0*Tref.^1.0.*b + 1.0*a.*log(Tref)); 
+    @. int_V    = 1/3*(KT+4*P2).*V1T.*(KT./(KT+4*P2)).^(1/4) - 1/3*(KT+4*Pref).*V1T.*(KT./(KT+4*Pref)).^(1/4); 
+    dH_T     = dHref .+ int_Cp;             
+    dS_T     = dSref .+ int_Cp_T;           
+    dG       = dH_T  .- T2.*dS_T  .+ int_V; 
+    if dGL == 1 #  dG Landau for SiO2 (second order phase transitions)
+        Q_298   = ( (1.0 .- Tref./Tc0).* (T2.<=Tc) ).^(1/4);
+        Q       = ( (1.0 .-   T2./Tc ).* (T2.<=Tc) ).^(1/4);
+        h_298   = Smax.*Tc0.*(Q_298.^2 .- (1/3).*Q_298.^6);
+        s_298   = Smax.*Q_298.^2.0;
+        v_t     = Vmax.*Q_298.^2.0 .* (1.0 .+ a0.*(T2 .- Tref) .- 20.0 .* a0 .* (sqrt.(T2) .-  sqrt.(Tref)));
+        intvdP  = (1.0/3.0) .* v_t .* KT .* ((1.0 .+ (4.0 .* ( P2 .- Pref ))./KT).^(3.0/4.0) .- 1.0);               
+        G_land  = Smax .* ( (T2 .- Tc) .* Q.^2.0 + (1.0/3.0).*Tc.*Q.^6.0);
+        G_exc   = h_298 .- T2 .* s_298 + intvdP + G_land;
+        dG      = dG + G_exc .* (T2.<=Tc);
+    end
+    return dG
+end
+#----------------------------------------------------------#
+@views function PhysicalProperties(T2,P2,dG,mmol,Pref,Tref,m0,m1,m2,k0,k1,k2,dP,dT)
+    dG       = dG/mmol*1e3                                       # from kJ/mol to J/kg
+    rho      =  1.0 ./ ( diff(dG, dims=2)/dP)
+    rho_tcax = 0.5*(rho[1:end-1,:] + rho[2:end,:])
+    rho_tcay = 0.5*(rho[:,1:end-1] + rho[:,2:end])
+    alp      = -1.0 ./ rho_tcax.*diff(rho,dims=1)/dT         # thermodynamically consistant alpha at cst P
+    bet      =  1.0 ./ rho_tcay.*diff(rho,dims=2)/dP         # thermodynamically consistant beta at cst T
+    G        = m0 .+ m1.*(P2 .- Pref)./1e5 .+ m2.*(T2 .- Tref)
+    K        = k0 .+ k1.*(P2 .- Pref)./1e5 .+ k2.*(T2 .- Tref)
+    return K, G, alp, bet, rho 
+end
+#----------------------------------------------------------#
+function QuartzCoesite()
+    # Parameters - all thermodynamic parameters are taken from hp-ds55.txt database 
+    nb_ph   = 2;
+    Tref    = 298;                    # K
+    Pref    = 1e-3;                   # kbar        
+    R       = 8.3144;                 # J/K/mol
+    dT      = 10*1
+    dP      = 10*0.01*1e5*1e3
+    T       = 673:dT:873
+    P       = 2e9:dP:3.5e9
+    # Fake ngrid for P-T space  ;)
+    T2      = repeat(T, 1, length(P))
+    P2      = repeat(P, 1, length(T))'
+    # COESITE
+    a       = 0.0965;
+    b       = -0.000000577;
+    c       = -444.8;
+    d       = -0.7982; 
+    Vref    = 2.064;      
+    a0      = 1.80e-5;      
+    Kref    = 1000;      
+    dSref   = 40.8*1e-3;   
+    dHref   = -905.52; 
+    mmol    = 60.08e-3;
+    dGL     = 0
+    Tc0     = 847;
+    Smax    = 0.00495 ;
+    Vmax    = 0.1188;
+    dG_coe  = GibbsEnergy(T2,P2,a,b,c,d,Vref,Pref,Tref,a0,Kref,dSref,dHref,dGL,Tc0,Smax,Vmax)
+    # Physical properties
+    m0      = 616000; 
+    m1      = 1.0541; 
+    m2      = -29.095; 
+    k0      = 974000; 
+    k1      = 4.3; 
+    k2      = -46.004;
+    K_coe, G_coe, alp_coe, bet_coe, rho_coe = PhysicalProperties(T2,P2,dG_coe,mmol,Pref,Tref,m0,m1,m2,k0,k1,k2,dP,dT)
+    # Qz
+    a       = 0.1107;
+    b       =-0.000005189;
+    c       = 0.0;
+    d       =-1.1283; 
+    Vref    = 2.269;    
+    a0      = 0.65e-5;       
+    Kref    = 750;      
+    dSref   = 41.5e-3;     
+    dHref   = -910.88;  
+    mmol    = 60.08e-3;
+    dGL     = 1
+    Tc0     = 847;
+    Smax    = 0.00495 ;
+    Vmax    = 0.1188;
+    # Gibbs energy
+    dG_q    = GibbsEnergy(T2,P2,a,b,c,d,Vref,Pref,Tref,a0,Kref,dSref,dHref,dGL,Tc0,Smax,Vmax)
+    m0       = 448538.0025;
+    m1       = 1.645295858;
+    m2       = -17.5543599;
+    k0       = 371254.6662;
+    k1       = 8.16916871;
+    k2       = -140.80;
+    # Physical properties
+    K_q, G_q, alp_q, bet_q, rho_q = PhysicalProperties(T2,P2,dG_q,mmol,Pref,Tref,m0,m1,m2,k0,k1,k2,dP,dT)
+    # Phase diagram
+    Stab                = zeros(length(T),length(P));
+    Stab[dG_coe.<dG_q] .= 1;
+    # Physical properties
+    dG_q_p    =  0.5.*(  dG_q[:,1:end-1] .+   dG_q[:,2:end]) 
+    dG_coe_p  =  0.5.*(dG_coe[:,1:end-1] .+ dG_coe[:,2:end]) 
+    dG_q_pt   = 0.25.*(  dG_q[2:end-0,1:end-1] .+   dG_q[1:end-1,2:end-0] .+   dG_q[1:end-1,1:end-1] .+   dG_q[2:end,2:end]) 
+    dG_coe_pt = 0.25.*(dG_coe[2:end-0,1:end-1] .+ dG_coe[1:end-1,2:end-0] .+ dG_coe[1:end-1,1:end-1] .+ dG_coe[2:end,2:end])
+    dG_q_pi   = dG_q[:,2:end-1]
+    dG_coe_pi = dG_coe[:,2:end-1]
+    rho                      = rho_q
+    rho[dG_coe_p .< dG_q_p ].= rho_coe[dG_coe_p .< dG_q_p]
+    alp                      = alp_q
+    alp[dG_coe_pt.< dG_q_pt].= alp_coe[dG_coe_pt.< dG_q_pt]
+    bet                      = bet_q
+    bet[dG_coe_pi.< dG_q_pi].= bet_coe[dG_coe_pi.< dG_q_pi]
+    G                        = G_q
+    G[dG_coe   .< dG_q   ]  .= G_coe[dG_coe   .< dG_q   ]
+    K                        = K_q
+    K[dG_coe   .< dG_q   ]  .= K_coe[dG_coe   .< dG_q   ]
+    nu                       = (3.0 .* K .- 2.0 .*G) ./ 2.0 ./(3.0 .* K .+ G);
+    Pc                       =  0.5.*(  P[1:end-1] .+   P[2:end])
+    Tc                       =  0.5.*(  T[1:end-1] .+   T[2:end])
+    Pi                       = P[2:end-1]
+    # Visualise
+    p1 = heatmap( T,  P/1e9, Stab', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\mathrm{Quartz/Coesite}" )
+    p2 = heatmap( T, Pc/1e9,  rho', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\rho_{ } [\mathrm{kg/m}^{-3}]" )
+    p3 = heatmap(Tc, Pc/1e9,  log10.(alp)', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\alpha_{ } [\mathrm{K}^{-1}]" )
+    p4 = heatmap( T, Pi/1e9,  log10.(bet)', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\beta_{ } [\mathrm{Pa}^{-1}]" )
+    display(plot(p1,p2,p3,p4, layout = 4))
+end
+
+@time QuartzCoesite()
