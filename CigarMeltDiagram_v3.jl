@@ -1,5 +1,3 @@
-using MAT
-using Base.Threads
 using JuMP, GLPK
 using Plots
 using LaTeXStrings
