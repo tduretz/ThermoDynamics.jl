@@ -17,22 +17,27 @@ using LaTeXStrings
     int_Cp   = zeros(size(P2))
     int_Cp_T = zeros(size(P2))
     int_V    = zeros(size(P2))
-    @. int_Cp   = (2.0 *sqrt(T2).*d + T2.^2 *b/2 + T2.*a - c./T2) - (2.0 *sqrt(Tref).*d + Tref.^2 *b/2 + Tref.*a - c./Tref); 
-    @. int_Cp_T = -0.5*T2.^(-2.0).*c - 2.0*1 /sqrt(T2).*d + 1.0*T2.^1.0.*b + 1.0*a.*log(T2) - (-0.5*Tref.^(-2.0).*c - 2.0*1 /sqrt(Tref).*d + 1.0*Tref.^1.0.*b + 1.0*a.*log(Tref)); 
+    if dGL == 0
+        @. int_Cp   = (2.0 *sqrt(T2).*d + T2.^2 *b/2 + T2.*a - c./T2) - (2.0 *sqrt(Tref).*d + Tref.^2 *b/2 + Tref.*a - c./Tref); 
+        @. int_Cp_T = -0.5*T2.^(-2.0).*c - 2.0*1 /sqrt(T2).*d + 1.0*T2.^1.0.*b + 1.0*a.*log(T2) - (-0.5*Tref.^(-2.0).*c - 2.0*1 /sqrt(Tref).*d + 1.0*Tref.^1.0.*b + 1.0*a.*log(Tref)); 
+    else
+        @. int_Cp   = (a*T2+(1.0/2.0)*b*T2.^2.0-c./T2+2*d*sqrt(T2)+(1.0/2.0)*Smax*((2.0/3.0)*(Tc-T2).^(3.0/2.0)-2.0*Tc.*sqrt(Tc-T2))./sqrt(Tc)) - (a*Tref+(1.0/2.0)*b*Tref.^2-c./Tref+2.0*d*sqrt(Tref)+(1.0/2.0)*Smax*((2.0/3.0)*(Tc-Tref).^(3.0/2.0)-2.0*Tc.*sqrt(Tc-Tref))./sqrt(Tc))
+        @. int_Cp_T = (-2.0*d./sqrt(T2)-Smax*sqrt(Tc-T2)./sqrt(Tc)+b*T2-(1.0/2.0)*c./T2.^2.0+a.*log(T2)) - (-2.0*d./sqrt(Tref)-Smax*sqrt(Tc-Tref)./sqrt(Tc)+b*Tref-(1.0/2.0)*c./Tref.^2.0+a.*log(Tref))
+    end
     @. int_V    = 1/3*(KT+4*P2).*V1T.*(KT./(KT+4*P2)).^(1/4) - 1/3*(KT+4*Pref).*V1T.*(KT./(KT+4*Pref)).^(1/4); 
     dH_T     = dHref .+ int_Cp;             
     dS_T     = dSref .+ int_Cp_T;           
     dG       = dH_T  .- T2.*dS_T  .+ int_V; 
-    if dGL == 1 #  dG Landau for SiO2 (second order phase transitions)
-        Q_298   = ( (1.0 .- Tref./Tc0).* (T2.<=Tc) ).^(1/4);
+    if dGL == 1 #  dG Landau for SiO2 and Al2SiO5 (second order phase transitions) -- validated with Hans
+        Q_ref   = ( (1.0 .- Tref./Tc0).* (T2.<=Tc) ).^(1/4);
         Q       = ( (1.0 .-   T2./Tc ).* (T2.<=Tc) ).^(1/4);
-        h_298   = Smax.*Tc0.*(Q_298.^2 .- (1/3).*Q_298.^6);
-        s_298   = Smax.*Q_298.^2.0;
-        v_t     = Vmax.*Q_298.^2.0 .* (1.0 .+ a0.*(T2 .- Tref) .- 20.0 .* a0 .* (sqrt.(T2) .-  sqrt.(Tref)));
-        intvdP  = (1.0/3.0) .* v_t .* KT .* ((1.0 .+ (4.0 .* ( P2 .- Pref ))./KT).^(3.0/4.0) .- 1.0);               
-        G_land  = Smax .* ( (T2 .- Tc) .* Q.^2.0 + (1.0/3.0).*Tc.*Q.^6.0);
-        G_exc   = h_298 .- T2 .* s_298 + intvdP + G_land;
-        dG      = dG + G_exc .* (T2.<=Tc);
+        H_ref   = Smax.*Tc0.*(Q_ref.^2 .- (1/3).*Q_ref.^6);
+        S_ref   = Smax.*Q_ref.^2.0;
+        V_t     = Vmax.*Q_ref.^2.0 .* (1.0 .+ a0.*(T2 .- Tref) .- 20.0 .* a0 .* (sqrt.(T2) .-  sqrt.(Tref)));
+        int_VdP = (1.0/3.0) .* V_t .* KT .* ((1.0 .+ (4.0 .* ( P2 .- Pref ))./KT).^(3.0/4.0) .- 1.0);               
+        GL      = Smax .* ( (T2 .- Tc) .* Q.^2.0 + (1.0/3.0).*Tc.*Q.^6.0);
+        Gex     = H_ref .- T2 .* S_ref + int_VdP + GL;
+        dG      = dG + Gex .* (T2.<=Tc);
     end
     return dG
 end
@@ -135,11 +140,27 @@ function QuartzCoesite()
     Pc                       =  0.5.*(  P[1:end-1] .+   P[2:end])
     Tc                       =  0.5.*(  T[1:end-1] .+   T[2:end])
     Pi                       = P[2:end-1]
+    # VERIFICATION: compare numerically obtained phase diagram with analytic phase diagram boundaries
+    # q - coe --- HP 98
+    Vcoe     = 2.064;  
+    Vq       = 2.269;  
+    Scoe     = 40.80;
+    Sq       = 41.50;
+    Gcoe     = -850.89e3;
+    Gq       = -856.46e3;
+    dV       = (Vq-Vcoe);
+    dS       = (Sq-Scoe);
+    dG       = (Gq-Gcoe);
+    Tr       = (dG + dS*Tref) / dS;
+    Pr       = (-dG+dV*Pref) / dV 
+    ord      = (-dS/dV*Tr - Pref*1000) /1000;
+    P_coe_q  = (T.*dS./dV./1000 .+ ord) / 10 # from bkar to GPa
     # Visualise
     p1 = heatmap( T,  P/1e9, Stab', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\mathrm{Quartz/Coesite}" )
-    p2 = heatmap( T, Pc/1e9,  rho', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\rho_{ } [\mathrm{kg/m}^{-3}]" )
-    p3 = heatmap(Tc, Pc/1e9,  log10.(alp)', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\alpha_{ } [\mathrm{K}^{-1}]" )
-    p4 = heatmap( T, Pi/1e9,  log10.(bet)', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\beta_{ } [\mathrm{Pa}^{-1}]" )
+    p1 =   plot!( T,  P_coe_q, linecolor=:white, xlims=(minimum(T),maximum(T)), ylims=(minimum(P./1e9),maximum(P./1e9)), legend = false )
+    p2 = heatmap( T, Pc/1e9,  rho', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\rho_{ } [\mathrm{kg.m}^{-3}]" )
+    p3 = heatmap(Tc, Pc/1e9,  log10.(alp)', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\log_{10} \alpha_{ } [\mathrm{K}^{-1}]" )
+    p4 = heatmap( T, Pi/1e9,  log10.(bet)', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\log_{10} \beta_{ } [\mathrm{Pa}^{-1}]" )
     display(plot(p1,p2,p3,p4, layout = 4))
 end
 
