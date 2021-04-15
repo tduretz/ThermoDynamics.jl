@@ -16,4 +16,4 @@ The script [`QuartzCoesite.jl`](QuartzCoesite.jl) produces this result:
 
 The script [`Aluminosilicates.jl`](Aluminosilicates.jl) produces this result:
 
-![](/images/1_TD_Aluminosilicates.png)
+![](/images/2_TD_Aluminosilicates.png)
