@@ -1,15 +1,13 @@
-using Plots
-using LaTeXStrings
+using Plots, LaTeXStrings, MAT
+gr()
 #----------------------------------------------------------#
 # This codes combines elements of the thermodynamics programming classes of Yury Podladchikov and from Annelore Bessat's Ph.D.
 #----------------------------------------------------------#
-@views function GibbsEnergy(T2,P20,a,b,c,d,Vref,Pref0,Tref,a0,Kref,dSref,dHref,dGL,Tc0,Smax,Vmax)
-    P2       = P20./1e5/1e3   # From Pa to kbar
-    Pref     = Pref0/1e5/1e3
+@views function GibbsEnergy(T2,P2,a,b,c,d,Vref,Pref,Tref,a0,Kref,dSref,dHref,dGL,Tc0,Smax,Vmax)
+    # P2       = P2./1e5/1e3   # From Pa to kbar
     Cp       = a  .+ b.*T2 .+ c.*T2.^(-2) + d.*T2.^(-1/2);                                # J/K   - extensive
     Tc       = Tc0 .+ Vmax./Smax.*(P2.-Pref);
     if dGL == 1
-        
         Cp      = Cp .+ (Smax.*T2) ./(2*sqrt.(Tc) .* sqrt.( (Tc-T2).* (T2.<=Tc) )) ;      # dG Landau for SiO2 (second order phase transitions)
     end
     V1T      = Vref.*(1 .+     a0.*(T2.-Tref) .- 20.0 .*a0 .*(sqrt.(T2) .- sqrt.(Tref))); # J/bar - extensive
@@ -44,7 +42,7 @@ using LaTeXStrings
 end
 #----------------------------------------------------------#
 @views function PhysicalProperties(T2,P2,dG,mmol,Pref,Tref,m0,m1,m2,k0,k1,k2,dP,dT)
-    dG       = dG/mmol*1e3                                       # from kJ/mol to J/kg
+    # dG       = dG/mmol*1e3                                       # from kJ/mol to J/kg
     rho      =  1.0 ./ ( diff(dG, dims=2)/dP)
     rho_tcax = 0.5*(rho[1:end-1,:] + rho[2:end,:])
     rho_tcay = 0.5*(rho[:,1:end-1] + rho[:,2:end])
@@ -59,21 +57,24 @@ function QuartzCoesite()
     # Parameters - all thermodynamic parameters are taken from hp-ds55.txt database 
     nb_ph   = 2;
     Tref    = 298;                    # K
-    Pref    = 101325                   # Pa        
+    Pref    = 1e-3                    # kbar        
+
     R       = 8.3144;                 # J/K/mol
-    # dT      = 10*1
-    # dP      = 10*0.01*1e5*1e3
-    # T       = 673:dT:873
-    # P       = 2e9:dP:3.5e9
+    Tmin    = 673;               # K
+    Tmax    = 873;
+    Pmin    = 20;                  # kbar
+    Pmax    = 35;
+
     Tmin    = 298+1e-3+100;               # K
     Tmax    = 800+273;
-    Pmin    = -Pref;                  # Pa
-    Pmax    = 50/10*1e9;
-    dP      = 0.02/10*1e9;                    # Pa
+    Pmin    = -1e-3;                  # kbar
+    Pmax    = 50;
+    dP      = 0.02;                    # kbar
     dT      = 1;
     T       = Tmin:dT:Tmax;           # K
-    P       = LinRange(Pmin, Pmax, 2501)
+    P       = LinRange(Pmin, Pmax, 2500)
     T       = LinRange(Tmin, Tmax, 675)
+    dP, dT  = P[2]-P[1], T[2]-T[1] 
     # Fake ngrid for P-T space  ;)
     T2      = repeat(T, 1, length(P))
     P2      = repeat(P, 1, length(T))'
@@ -93,6 +94,7 @@ function QuartzCoesite()
     Smax    = 0.00495 ;
     Vmax    = 0.1188;
     dG_coe  = GibbsEnergy(T2,P2,a,b,c,d,Vref,Pref,Tref,a0,Kref,dSref,dHref,dGL,Tc0,Smax,Vmax)
+    dG_coe  = dG_coe/mmol/1e5
     # Physical properties
     m0      = 616000; 
     m1      = 1.0541; 
@@ -110,7 +112,7 @@ function QuartzCoesite()
     a0      = 0.65e-5;       
     Kref    = 750;      
     dSref   = 41.5e-3;     
-    dHref   = -910.88;  
+    dHref   = -910.84;  
     mmol    = 60.08e-3;
     dGL     = 1
     Tc0     = 847;
@@ -118,12 +120,13 @@ function QuartzCoesite()
     Vmax    = 0.1188;
     # Gibbs energy
     dG_q    = GibbsEnergy(T2,P2,a,b,c,d,Vref,Pref,Tref,a0,Kref,dSref,dHref,dGL,Tc0,Smax,Vmax)
-    m0       = 448538.0025;
-    m1       = 1.645295858;
-    m2       = -17.5543599;
-    k0       = 371254.6662;
-    k1       = 8.16916871;
-    k2       = -140.80;
+    dG_q    = dG_q/mmol/1e5
+    m0      = 448538.0025;
+    m1      = 1.645295858;
+    m2      = -17.5543599;
+    k0      = 371254.6662;
+    k1      = 8.16916871;
+    k2      = -140.80;
     # Physical properties
     K_q, G_q, alp_q, bet_q, rho_q = PhysicalProperties(T2,P2,dG_q,mmol,Pref,Tref,m0,m1,m2,k0,k1,k2,dP,dT)
     # Phase diagram
@@ -162,20 +165,18 @@ function QuartzCoesite()
     dS       = (Sq-Scoe);
     dG       = (Gq-Gcoe);
     Tr       = (dG + dS*Tref) / dS;
-    Pr       = (-dG+dV*Pref/1e5) / dV 
-    ord      = (-dS/dV*Tr - Pref/1e5*1000) /1000;
+    Pref    = 101325
+    Pr       = (-dG+dV*Pref) / dV 
+    ord      = (-dS/dV*Tr - Pref/1e5*1000) /1000
     P_coe_q  = (T.*dS./dV./1000 .+ ord) / 10 # from bkar to GPa
     # Visualise
-    p1 = heatmap( T,  P/1e9, Stab', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\mathrm{Quartz/Coesite}" )
-    p1 =   plot!( T,  P_coe_q, linecolor=:red, linewidth=3, linestyle=:dash, xlims=(minimum(T),maximum(T)), ylims=(minimum(P./1e9),maximum(P./1e9)), legend = false )
-    p2 = heatmap( T, Pc/1e9,  rho', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\rho_{ } [\mathrm{kg.m}^{-3}]" )
-    p3 = heatmap(Tc, Pc/1e9,  log10.(abs.(alp))', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\log_{10} \alpha_{ } [\mathrm{K}^{-1}]" )
-    p4 = heatmap( T, Pi/1e9,  log10.(abs.(bet))', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\log_{10} \beta_{ } [\mathrm{Pa}^{-1}]" )
-    display(plot(p1, p2, layout = 4)) #, p3, p4,
+    p1 = Plots.heatmap( T,  P./10, Stab', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\mathrm{Quartz/Coesite}" )
+    p1 = Plots.plot!(   T,  P_coe_q, linecolor=:red, linewidth=3, linestyle=:dash, xlims=(minimum(T),maximum(T)), ylims=(minimum(P/10),maximum(P./10)), legend = false )
+    p2 = Plots.heatmap( T, Pc./10,  rho', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\rho_{ } [\mathrm{kg.m}^{-3}]" )
+    p3 = Plots.heatmap(Tc, Pc/1e9,  log10.(abs.(alp))', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\log_{10} \alpha_{ } [\mathrm{K}^{-1}]" )
+    p4 = Plots.heatmap( T, Pi/1e9,  log10.(abs.(bet))', c=:inferno, xlabel=L"T_{ } [{\mathrm{K}}]", ylabel=L"P_{ } [\mathrm{GPa}]", title=L"\log_{10} \beta_{ } [\mathrm{Pa}^{-1}]" )
+    display(Plots.plot(p1, p2, layout = 4)) #, p3, p4
 
-    @show typeof(rho)
-    @show size(rho)
-    write("SiO2_julia_revised_v1.dat", rho)
 end
 
 @time QuartzCoesite()
